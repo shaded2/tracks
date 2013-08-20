@@ -42,6 +42,16 @@ group :production, :staging do
   gem 'pg', '0.12.2'
 end
 
+group :development, :test do
+  gem 'sqlite3'
+  # BDD style test suite
+  gem 'rspec-rails'
+  # Annotate Models
+  gem 'annotate'
+  # Never run bundle exec again.
+  gem 'rubygems-bundler'
+end
+
 group :development do
   gem "yard"
   gem "tolk"
