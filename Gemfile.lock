@@ -220,7 +220,7 @@ DEPENDENCIES
   htmlentities
   jquery-rails
   mocha
-  pg (= 0.12.2)
+  pg
   rack-mini-profiler
   rails (~> 4.0.0)
   rails_autolink

@@ -39,7 +39,7 @@ gem 'bcrypt-ruby', '~> 3.0.0'
 # gem 'jbuilder', '~> 1.2'
 group :production, :staging do
   #gem 'mysql2', '0.3.11'
-  gem 'pg', '0.12.2'
+  gem 'pg'
 end
 
 group :development, :test do
