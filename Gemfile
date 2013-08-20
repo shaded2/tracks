@@ -18,8 +18,6 @@ gem 'jquery-rails'
 # This will prevent a native build of the driver. Building native drivers is not
 # always possible on all hosters
 
-gem "pg"
-
 gem "RedCloth"
 gem "sanitize"
 gem "will_paginate"
@@ -39,6 +37,10 @@ gem 'bcrypt-ruby', '~> 3.0.0'
 
 # Build JSON APIs with ease. Read more: https://github.com/rails/jbuilder
 # gem 'jbuilder', '~> 1.2'
+group :production, :staging do
+  #gem 'mysql2', '0.3.11'
+  gem 'pg', '0.12.2'
+end
 
 group :development do
   gem "yard"
