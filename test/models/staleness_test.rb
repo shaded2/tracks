@@ -1,13 +1,21 @@
 require_relative '../minimal_test_helper'
 require_relative '../../lib/staleness'
-
+require_relative '../../lib/user_time'
+require 'timecop'
 
 class StalenessTest < Test::Unit::TestCase
-  FakeUser = Struct.new(:time)
+  FakePrefs = Struct.new(:time_zone)
+  FakeUser = Struct.new(:time) do
+    def prefs
+      @prefs ||= FakePrefs.new("UTC")
+    end
+  end
+
   FakeTask = Struct.new(:due, :completed, :created_at) do
     def completed?
       self.completed
     end
+
   end
 
   def now
@@ -28,6 +36,11 @@ class StalenessTest < Test::Unit::TestCase
 
   def setup
     @current_user = FakeUser.new(now)
+    Timecop.freeze(Time.utc(2013,02,28))
+  end
+
+  def teardown
+    Timecop.return
   end
 
   def test_item_with_due_date_is_not_stale_ever

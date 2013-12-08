@@ -51,6 +51,7 @@ class Todo < ActiveRecord::Base
   scope :completed_before,  lambda { |date| where("todos.completed_at < ?", date) }
   scope :created_after,     lambda { |date| where("todos.created_at > ?", date) }
   scope :created_before,    lambda { |date| where("todos.created_at < ?", date) }
+  scope :created_or_completed_after,  lambda { |date| where("todos.created_at > ? or todos.completed_at > ?", date, date) }
 
   def self.due_after(date)
     where('todos.due > ?', date)
@@ -72,7 +73,7 @@ class Todo < ActiveRecord::Base
     state :active 
     state :project_hidden
     state :completed, :before_enter => Proc.new { |t| t.completed_at = Time.zone.now }, :before_exit => Proc.new { |t| t.completed_at = nil}
-    state :deferred,  :after_exit => Proc.new { |t| t[:show_from] = nil }
+    state :deferred,  :before_exit => Proc.new { |t| t[:show_from] = nil }
     state :pending
 
     event :defer do
@@ -96,7 +97,7 @@ class Todo < ActiveRecord::Base
     end
 
     event :unhide do
-      transitions :to => :deferred, :from => [:project_hidden], :guard => Proc.new{|t| !t.show_from.blank? }
+      transitions :to => :deferred, :from => [:project_hidden], :guard => Proc.new{|t| t.show_from.present? }
       transitions :to => :pending, :from => [:project_hidden], :guard => :uncompleted_predecessors?
       transitions :to => :active, :from => [:project_hidden]
     end
@@ -118,7 +119,7 @@ class Todo < ActiveRecord::Base
 
   def check_show_from_in_future
     if show_from_changed? # only check on change of show_from
-      if !show_from.blank? && (show_from < user.date)
+      if show_from.present? && (show_from < user.date)
         errors.add("show_from", I18n.t('models.todo.error_date_must_be_future'))
       end
     end
@@ -262,14 +263,14 @@ class Todo < ActiveRecord::Base
       activate
     else
       # parse Date objects into the proper timezone
-      date = user.at_midnight(date) if (date.is_a? Date)
+      date = UserTime.new(user).midnight(date) if (date.is_a? Date)
 
       # show_from needs to be set before state_change because of "bug" in aasm.
       # If show_from is not set, the todo will not validate and thus aasm will not save
       # (see http://stackoverflow.com/questions/682920/persisting-the-state-column-on-transition-using-rubyist-aasm-acts-as-state-machi)
       self[:show_from] = date
 
-      defer if active? && !date.blank? && show_from > user.date
+      defer if active? && date.present? && show_from > user.date
     end
   end
 
@@ -298,7 +299,7 @@ class Todo < ActiveRecord::Base
     return unless predecessor_list.kind_of? String
 
     @predecessor_array=predecessor_list.split(",").inject([]) do |list, todo_id|
-      predecessor = self.user.todos.find( todo_id.to_i ) unless todo_id.blank?
+      predecessor = self.user.todos.find( todo_id.to_i ) if todo_id.present?
       list <<  predecessor unless predecessor.nil?
       list
     end
@@ -340,7 +341,7 @@ class Todo < ActiveRecord::Base
     # value will be a string. In that case convert to array
     deps = [deps] unless deps.class == Array
 
-    deps.each { |dep| self.add_predecessor(self.user.todos.find(dep.to_i)) unless dep.blank? }
+    deps.each { |dep| self.add_predecessor(self.user.todos.find(dep.to_i)) if dep.present? }
   end
 
   alias_method :original_context=, :context=
@@ -384,48 +385,6 @@ class Todo < ActiveRecord::Base
     end
   end
 
-  # Rich Todo API
-  def self.from_rich_message(user, default_context_id, description, notes)
-    fields = description.match(/([^>@]*)@?([^>]*)>?(.*)/)
-    description = fields[1].strip
-    context = fields[2].strip
-    project = fields[3].strip
-
-    context = nil if context == ""
-    project = nil if project == ""
-
-    context_id = default_context_id
-    unless(context.nil?)
-      found_context = user.contexts.active.where("name like ?", "%#{context}%").first
-      found_context = user.contexts.where("name like ?", "%#{context}%").first if !found_context
-      context_id = found_context.id if found_context
-    end
-
-    unless user.contexts.exists? context_id
-      raise(CannotAccessContext, "Cannot access a context that does not belong to this user.")
-    end
-
-    project_id = nil
-    unless(project.blank?)
-      if(project[0..3].downcase == "new:")
-        found_project = user.projects.build
-        found_project.name = project[4..255+4].strip
-        found_project.save!
-      else
-        found_project = user.projects.active.find_by_namepart(project)
-        found_project = user.projects.find_by_namepart(project) if found_project.nil?
-      end
-      project_id = found_project.id unless found_project.nil?
-    end
-
-    todo = user.todos.build
-    todo.description = description
-    todo.raw_notes = notes
-    todo.context_id = context_id
-    todo.project_id = project_id unless project_id.nil?
-    return todo
-  end
-
   def render_note
     unless self.notes.nil?
       self.rendered_notes = Tracks::Utils.render_text(self.notes)
@@ -434,11 +393,11 @@ class Todo < ActiveRecord::Base
     end
   end
 
-  def self.import(params, user)
-    default_context = Context.where(:user_id=>user.id).order('id').first
+  def self.import(filename, params, user)
+    default_context = user.contexts.order('id').first
     
     count = 0
-    CSV.foreach(params[:file], headers: true) do |row|
+    CSV.foreach(filename, headers: true) do |row|
       unless find_by_description_and_user_id row[params[:description].to_i], user.id
         todo = new 
         todo.user = user

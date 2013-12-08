@@ -139,7 +139,7 @@ module TodosHelper
         :collapsible => false, 
         :show_empty_containers => true,
         :container_name => "#{period}",
-        :title =>t("todos.calendar.#{period}", :month => l(Time.zone.now, :format => "%B"))
+        :title =>t("todos.calendar.#{period}", :month => l(Time.zone.now, :format => "%B"), :next_month => l(1.month.from_now, :format => "%B"))
         }
       }
   end
@@ -408,7 +408,7 @@ module TodosHelper
   end
 
   def format_ical_notes(notes)
-    unless notes.nil? || notes.blank?
+    if notes.present?
       split_notes = notes.split(/\n/)
       joined_notes = split_notes.join("\\n")
     end
@@ -426,7 +426,7 @@ module TodosHelper
   def render_animation(animation)
     html = ""
     animation.each do |step|
-      unless step.blank?
+      if step.present?
         html += step + "({ go: function() {\r\n"
       end
     end
@@ -573,6 +573,13 @@ module TodosHelper
       page.todo     { return todo_moved_out_of_container && !(@todo.deferred? || @todo.pending? || @todo.hidden?) }
     end
     return false
+  end
+
+  def should_show_empty_container
+    source_view do |page|
+      page.context { return @remaining_in_context == 0 } 
+    end
+    return @down_count==0 
   end
 
   def project_container_id(todo)

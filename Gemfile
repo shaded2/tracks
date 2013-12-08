@@ -4,6 +4,8 @@ gem 'rails', '~>4.0.0'
 gem 'sass-rails', '~>4.0.0'
 gem 'coffee-rails', '~>4.0.0'
 
+gem 'json'
+
 # todo: remove xml api
 gem 'actionpack-xml_parser', git: 'https://github.com/rails/actionpack-xml_parser'
 
@@ -66,9 +68,8 @@ group :test do
   gem "database_cleaner"
   gem "mocha", :require => false
 
-  gem "aruba", :require => false
-  gem "simplecov"
-  gem "timecop"
+  gem "aruba", git: 'https://github.com/cucumber/aruba', :require => false  # need 0.5.4 for piping files; 0.5.3 is latest
+  gem "timecop", "~> 0.6.2"
 
   # Note that > 2.14 has problems, see:
   # https://code.google.com/p/selenium/issues/detail?id=3075
@@ -80,4 +81,8 @@ group :test do
   # uncomment to be able to make screenshots from scenarios
   #gem "capybara-screenshot"
   #gem "launchy"
+
+  gem "simplecov"
+  # get test coverage info on codeclimate
+  gem "codeclimate-test-reporter", group: :test, require: nil
 end

@@ -51,18 +51,18 @@ class TodoTest < ActiveSupport::TestCase
 
   def test_validate_length_of_description
     assert_equal "Call dinosaur exterminator", @not_completed2.description
-    @not_completed2.description = generate_random_string(101)
+    @not_completed2.description = generate_random_string(Todo::MAX_DESCRIPTION_LENGTH+1)
     assert !@not_completed2.save
     assert_equal 1, @not_completed2.errors.count
-    assert_equal "is too long (maximum is 100 characters)", @not_completed2.errors[:description][0]
+    assert_equal "is too long (maximum is #{Todo::MAX_DESCRIPTION_LENGTH} characters)", @not_completed2.errors[:description][0]
   end
 
   def test_validate_length_of_notes
     assert_equal "Ask him if I need to hire a skip for the corpses.", @not_completed2.notes
-    @not_completed2.notes = generate_random_string(60001)
+    @not_completed2.notes = generate_random_string(Todo::MAX_NOTES_LENGTH+1)
     assert !@not_completed2.save
     assert_equal 1, @not_completed2.errors.count
-    assert_equal "is too long (maximum is 60000 characters)", @not_completed2.errors[:notes][0]
+    assert_equal "is too long (maximum is #{Todo::MAX_NOTES_LENGTH} characters)", @not_completed2.errors[:notes][0]
   end
 
   def test_validate_show_from_must_be_a_date_in_the_future
@@ -160,17 +160,23 @@ class TodoTest < ActiveSupport::TestCase
   end
 
   def test_activate_also_clears_show_from
-    # setup test case
-    t = @not_completed1
-    t.show_from = 1.week.from_now
-    t.save!
-    assert t.deferred?
-    t.reload
+    dates = [1.week.from_now, 1.week.ago]
 
-    # activate and check show_from
-    t.activate!
-    assert t.active?
-    assert t.show_from.nil?
+    dates.each do |show_from_date|
+      # setup test case
+      t = @not_completed1
+      Timecop.travel(show_from_date - 1.day) do
+        t.show_from = show_from_date
+        t.save!
+        assert t.deferred?
+        t.reload
+      end
+
+      # activate and check show_from
+      t.activate!
+      assert t.active?
+      assert t.show_from.nil?
+    end
   end
 
   def test_clearing_show_from_activates_todo
@@ -193,6 +199,24 @@ class TodoTest < ActiveSupport::TestCase
     assert !t.project.is_a?(NullProject)
     t.project = nil
     assert t.project.is_a?(NullProject)
+  end
+
+  def test_update_from_project
+    # Given a hidden project
+    assert_not_nil @not_completed1.project
+    project = @not_completed1.project
+    project.hide!
+    assert project.hidden?
+    assert @not_completed1.reload.hidden?
+
+    # When I manually create a new todo in the hidden projct
+    new_todo = @not_completed1.user.todos.build(description: "test", context: @not_completed1.context, project: project)
+    new_todo.save!
+    assert new_todo.active?
+    # And I update the state of the todo from its project
+    new_todo.update_state_from_project
+    # Then the todo should be hidden
+    assert new_todo.hidden?    
   end
 
   def test_initial_state_defaults_to_active
@@ -320,6 +344,31 @@ class TodoTest < ActiveSupport::TestCase
 
     assert !@not_completed1.uncompleted_predecessors?
     assert @not_completed1.active?, "removing last predecessor should activate todo"
+  end
+
+  def test_removing_precesessor_using_new_dependency_list
+    # Given three active todos (@not_completed{1,2.3})
+    @completed.activate!
+    @not_completed3 = @completed
+
+    #When I add two todos as dependency to one todo
+    @not_completed1.add_predecessor_list("#{@not_completed2.id}, #{@not_completed3.id}")
+    @not_completed1.save_predecessors
+    # blocking is not done automagically
+    @not_completed1.block! 
+
+    # Then @completed1 should have predecessors and should be blocked
+    assert @not_completed1.uncompleted_predecessors?
+    assert @not_completed1.pending?, "a todo with predecessors should be pending"
+
+    # When I set the predecessors to only todo2
+    @not_completed1.add_predecessor_list("#{@not_completed2.id}") #
+    @not_completed1.save_predecessors
+
+    # Then todo1 should have only one predecessor and it should be todo2
+    assert @not_completed1.uncompleted_predecessors?
+    assert_equal 1, @not_completed1.predecessors.count
+    assert_equal @not_completed2, @not_completed1.predecessors.first
   end
 
   def test_finding_todos_with_a_tag
@@ -477,15 +526,4 @@ class TodoTest < ActiveSupport::TestCase
     assert_equal "<p><strong>test</strong></p>", todo.rendered_notes
   end
 
-  def test_from_rich_message_adds_to_default_context
-    user = @completed.user
-    default_context_id = @completed.context_id
-    new_todo = Todo::from_rich_message(user, default_context_id, "new todo", "notes")
-
-    assert_not_nil new_todo
-    assert_equal "new todo", new_todo.description
-    assert_equal "notes", new_todo.notes
-    assert_equal default_context_id, new_todo.context_id
-  end
-  
 end

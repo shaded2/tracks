@@ -12,6 +12,7 @@ class Project < ActiveRecord::Base
   scope :uncompleted, -> { where("NOT(state = ?)", 'completed') }
 
   scope :with_name_or_description, lambda { |body| where("name LIKE ? OR description LIKE ?", body, body) }
+  scope :with_namepart, lambda { |body| where("name LIKE ?", body + '%') }
 
   validates_presence_of :name
   validates_length_of :name, :maximum => 255
@@ -99,9 +100,10 @@ class Project < ActiveRecord::Base
     end
   end
 
-  def needs_review?(current_user)
+  def needs_review?(user)
+    current_time = UserTime.new(user).time
     return active? && ( last_reviewed.nil? ||
-                        (last_reviewed < current_user.time - current_user.prefs.review_period.days))
+                        (last_reviewed < current_time - user.prefs.review_period.days))
   end
 
   def blocked?
@@ -134,12 +136,12 @@ class Project < ActiveRecord::Base
   end
 
   def age_in_days
-    @age_in_days ||= (Date.today - created_at.to_date + 1).to_i
+    @age_in_days ||= ((Time.now.utc - created_at).to_i / 1.day) + 1
   end
 
-  def self.import(params, user)
+  def self.import(filename, params, user)
     count = 0
-    CSV.foreach(params[:file], headers: true) do |row|
+    CSV.foreach(filename, headers: true) do |row|
       unless find_by_name_and_user_id row[params[:name].to_i], user.id
         project = new 
         project.name = row[params[:name].to_i]

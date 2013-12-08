@@ -38,11 +38,7 @@ class ProjectsController < ApplicationController
           cookies[:mobile_url]= {:value => request.fullpath, :secure => SITE_CONFIG['secure_cookies']}
         end
         format.xml   { render :xml => @projects.to_xml( :except => :user_id )  }
-        format.rss   do
-          @feed_title = I18n.t('models.project.feed_title')
-          @feed_description = I18n.t('models.project.feed_description', :username => current_user.display_name)
-        end
-        format.atom  do
+        format.any(:rss, :atom) do
           @feed_title = I18n.t('models.project.feed_title')
           @feed_description = I18n.t('models.project.feed_description', :username => current_user.display_name)
         end
@@ -140,8 +136,8 @@ class ProjectsController < ApplicationController
       limit(current_user.prefs.show_number_completed).
       includes(Todo::DEFAULT_INCLUDES) unless @max_completed == 0
 
-    @count = @not_done_todos.size
-    @down_count = @count + @deferred_todos.size + @pending_todos.size
+    @down_count = @not_done_todos.size + @deferred_todos.size + @pending_todos.size
+    @count=@down_count
     @next_project = current_user.projects.next_from(@project)
     @previous_project = current_user.projects.previous_from(@project)
     @default_tags = @project.default_tags
@@ -338,7 +334,7 @@ class ProjectsController < ApplicationController
     default_context_name = p['default_context_name']
     p.delete('default_context_name')
 
-    unless default_context_name.blank?
+    if default_context_name.present?
       default_context = current_user.contexts.where(:name => default_context_name).first_or_create
       p['default_context_id'] = default_context.id
     end

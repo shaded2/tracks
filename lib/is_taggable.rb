@@ -49,7 +49,7 @@ module IsTaggable
       def _add_tags incoming
         tag_cast_to_string(incoming).each do |tag_name|
           # added following check to prevent empty tags from being saved (which will fail)
-          unless tag_name.blank?
+          if tag_name.present?
             begin
               tag = Tag.where(:name => tag_name).first_or_create
               raise Tag::Error, "tag could not be saved: #{tag_name}" if tag.new_record?
@@ -80,7 +80,11 @@ module IsTaggable
         end
       end
 
-      def tag_cast_to_string obj
+      def tag_cast_to_string(obj)
+        tag_array_from_obj(obj).flatten.compact.map(&:downcase).uniq
+      end
+
+      def tag_array_from_obj(obj)
         case obj
         when Array
           obj.map! { |item| get_tag_name_from_item(item) }
@@ -88,7 +92,7 @@ module IsTaggable
           obj.split(Tag::DELIMITER).map { |tag_name| tag_name.strip.squeeze(" ") }
         else
           raise "Invalid object of class #{obj.class} as tagging method parameter"
-        end.flatten.compact.map(&:downcase).uniq
+        end
       end
             
     end
